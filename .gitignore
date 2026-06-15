@@ -1,0 +1,25 @@
+# Segredos — NUNCA versionar
+.env
+*.env
+!.env.example
+backend/.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+dist/
+
+# Build embutido (gerado pelo Docker)
+backend/static/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
