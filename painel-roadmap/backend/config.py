@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     # Tipos de work item que entram no roadmap (ajuste se seu processo usa nomes custom)
     epic_type: str = "Epic"
     feature_type: str = "Feature"
+    teste_type: str = "PBI"
 
     # CORS - origem do frontend (Vite dev = 5173, ajuste em produção)
     allowed_origins: str = "http://localhost:5173,http://localhost:3000"
