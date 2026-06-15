@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     epic_type: str = "Epic"
     feature_type: str = "Feature"
     teste_type: str = "PBI"
+    teste_type_2: str = "US"
+    teste_type_3: str = "US"
+    teste_type_4: str = "US"
+
 
     # CORS - origem do frontend (Vite dev = 5173, ajuste em produção)
     allowed_origins: str = "http://localhost:5173,http://localhost:3000"
