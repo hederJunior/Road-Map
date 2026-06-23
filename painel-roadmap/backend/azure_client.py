@@ -35,6 +35,7 @@ FIELDS = [
     "Microsoft.VSTS.Scheduling.StartDate",
     "Microsoft.VSTS.Scheduling.TargetDate",
     "Microsoft.VSTS.Common.Priority",
+    "System.Description",
     # Campos customizados do roadmap
     "Custom.24ed5080-e3b3-43a7-af51-2e7ec564b453",   # Data início no Gráfico Gantt
     "Custom.27fa629f-5d4c-42b8-ab24-d8aa430e98a8",   # Data fim no Gráfico Gantt
@@ -151,6 +152,7 @@ def _to_workitem(raw: dict[str, Any]) -> dict[str, Any]:
         "target_date": target,
         "priority": f.get("Microsoft.VSTS.Common.Priority"),
         "url": raw.get("url"),
+        "description": f.get("System.Description"),
         "months": months,
         "is_roadmap_item": is_roadmap_item,
     }
@@ -187,11 +189,14 @@ def build_roadmap(raw_items: list[dict[str, Any]]) -> RoadmapResponse:
                 ms = sorted({m for f in epic.features for m in f.months})
                 epic.months = ms
 
-    # eixo de meses: do menor ao maior presente nos dados
+    # eixo de meses: do menor ao maior presente nos dados, sempre até dezembro do ano corrente
+    current_year = date.today().year
+    dec_key = f"{current_year}-12"
     all_keys = sorted(
         {m for e in epics.values() for m in e.months}
         | {m for e in epics.values() for f in e.features for m in f.months}
         | {m for f in orphans for m in f.months}
+        | {dec_key}
     )
     months = _expand_month_axis(all_keys)
 

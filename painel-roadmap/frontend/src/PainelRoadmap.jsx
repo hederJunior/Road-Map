@@ -297,6 +297,9 @@ function PainelRoadmap({ project, onBack }) {
         .rm-sync{display:flex;align-items:center;gap:7px;font-family:'Barlow';font-weight:600;font-size:13px;
           background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;}
         .rm-sync:hover{filter:brightness(.94);}
+        .rm-btn-outline{display:flex;align-items:center;gap:6px;font-family:'Barlow';font-weight:600;font-size:13px;
+          background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 13px;cursor:pointer;}
+        .rm-btn-outline:hover{border-color:var(--ink);}
         .rm-legend{display:flex;gap:14px;padding:9px 20px;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap;}
         .rm-leg{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--soft);font-weight:500;}
         .rm-chip{width:11px;height:11px;border-radius:3px;}
@@ -354,6 +357,8 @@ function PainelRoadmap({ project, onBack }) {
           <div className="rm-sub">Epics → Features · Azure DevOps {demo ? "· dados de exemplo" : "· conectado"}</div>
         </div>
         <div className="rm-spacer" />
+        <button className="rm-btn-outline" onClick={() => setExpanded(new Set(epics.map((e) => e.id)))}>Expandir todos</button>
+        <button className="rm-btn-outline" onClick={() => setExpanded(new Set())}>Comprimir todos</button>
         <select className="rm-sel" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
           <option value="all">Todos os anos</option>
           {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
@@ -451,7 +456,7 @@ function PainelRoadmap({ project, onBack }) {
                       style={{
                         left: box.left, width: box.width,
                         height: isEpic ? 26 : 20,
-                        background: isEpic ? "#424449" : stateOf(r.item.state).bar,
+                        background: stateOf(r.item.state).bar,
                         color: "#fff",
                       }}
                       onClick={() => setSelected(isEpic ? r.item : { ...r.item, type: "Feature", epicTitle: r.epic.title })}
@@ -487,15 +492,26 @@ function PainelRoadmap({ project, onBack }) {
             {typeof selected.progress === "number" && selected.type !== "Feature" && (
               <div className="rm-frow"><span className="rm-flabel">Progresso</span><span className="rm-fval">{Math.round(selected.progress * 100)}%</span></div>
             )}
+            {selected.description && (
+              <div style={{ paddingTop: 12 }}>
+                <div className="rm-flabel" style={{ fontSize: 12, marginBottom: 6 }}>Descrição</div>
+                <div style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1.5 }}
+                  dangerouslySetInnerHTML={{ __html: selected.description }} />
+              </div>
+            )}
             {selected.tags?.length > 0 && (
               <div style={{ paddingTop: 12 }}>
                 <div className="rm-flabel" style={{ fontSize: 12, marginBottom: 6 }}>Tags</div>
                 {selected.tags.map((t) => <span className="rm-tag" key={t}>{t}</span>)}
               </div>
             )}
-            <a className="rm-link" href={API_BASE ? "#" : undefined} onClick={(e) => !API_BASE && e.preventDefault()}>
-              Abrir no Azure DevOps <ExternalLink size={14} />
-            </a>
+            {selected.url && (
+              <a className="rm-link"
+                href={selected.url.replace('/_apis/wit/workItems/', '/_workitems/edit/')}
+                target="_blank" rel="noreferrer">
+                Abrir no Azure DevOps <ExternalLink size={14} />
+              </a>
+            )}
           </div>
         )}
       </div>

@@ -17,6 +17,7 @@ class WorkItem(BaseModel):
     target_date: date | None = None
     priority: int | None = None
     url: str | None = None
+    description: str | None = None
     # Meses ocupados pela barra, ex: ["2025-07", "2025-08"]
     months: list[str] = []
     is_roadmap_item: bool = False
