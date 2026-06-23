@@ -8,7 +8,8 @@ class Settings(BaseSettings):
 
     # Azure DevOps
     azure_org: str                          # ex: "nstech" (https://dev.azure.com/<org>)
-    azure_project: str                      # ex: "KMM" (nome ou GUID do projeto)
+    azure_project: str                      # projeto padrão / primeiro da lista
+    azure_extra_projects: str = ""          # projetos adicionais separados por vírgula, ex: "KMM5"
     azure_pat: str                          # Personal Access Token (escopo Work Items - Read)
     azure_api_version: str = "7.1"
 
@@ -27,8 +28,16 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
 
     @property
+    def projects(self) -> list[str]:
+        extras = [p.strip() for p in self.azure_extra_projects.split(",") if p.strip()]
+        return [self.azure_project] + extras
+
+    def project_base_url(self, project: str) -> str:
+        return f"https://dev.azure.com/{self.azure_org}/{project}/_apis"
+
+    @property
     def base_url(self) -> str:
-        return f"https://dev.azure.com/{self.azure_org}/{self.azure_project}/_apis"
+        return self.project_base_url(self.azure_project)
 
 
 @lru_cache

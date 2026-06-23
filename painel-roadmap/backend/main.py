@@ -37,17 +37,26 @@ app.add_middleware(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "org": settings.azure_org, "project": settings.azure_project}
+    return {"status": "ok", "org": settings.azure_org, "projects": ",".join(settings.projects)}
+
+
+@app.get("/api/projects")
+async def list_projects() -> list[str]:
+    """Retorna a lista de projetos disponíveis para seleção no painel."""
+    return settings.projects
 
 
 @app.get("/api/roadmap", response_model=RoadmapResponse)
 async def roadmap(
+    project: str | None = Query(None, description="Nome do projeto Azure DevOps (ex: 'KMM4')"),
     team: str | None = Query(None, description="Filtra por Area Path (ex: 'KMM\\\\Squad TMS')"),
     state: str | None = Query(None, description="Filtra por estado (ex: 'Active')"),
 ) -> RoadmapResponse:
+    if project and project not in settings.projects:
+        raise HTTPException(400, f"Projeto '{project}' não configurado. Projetos disponíveis: {settings.projects}")
     client = AzureDevOpsClient(settings)
     try:
-        return await client.get_roadmap(team=team, state=state)
+        return await client.get_roadmap(project=project, team=team, state=state)
     except httpx.HTTPStatusError as e:
         code = e.response.status_code
         if code in (401, 403):

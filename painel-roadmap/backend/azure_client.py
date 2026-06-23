@@ -17,7 +17,7 @@ from typing import Any
 import httpx
 
 from config import Settings
-from models import Epic, Feature, Quarter, RoadmapResponse, WorkItem
+from models import Epic, Feature, Month, RoadmapResponse, WorkItem
 
 # Estados considerados "concluído" para o cálculo de progresso do epic.
 DONE_STATES = {"Closed", "Done", "Completed", "Resolved", "Concluído", "Fechado"}
@@ -35,6 +35,10 @@ FIELDS = [
     "Microsoft.VSTS.Scheduling.StartDate",
     "Microsoft.VSTS.Scheduling.TargetDate",
     "Microsoft.VSTS.Common.Priority",
+    # Campos customizados do roadmap
+    "Custom.24ed5080-e3b3-43a7-af51-2e7ec564b453",   # Data início no Gráfico Gantt
+    "Custom.27fa629f-5d4c-42b8-ab24-d8aa430e98a8",   # Data fim no Gráfico Gantt
+    "Custom.44b378c0-6c3f-4478-8693-c16e44f9928b",   # Item de roadmap estratégico
 ]
 
 
@@ -49,9 +53,9 @@ class AzureDevOpsClient:
 
     # ---- chamadas HTTP -------------------------------------------------
 
-    async def _query_ids(self, client: httpx.AsyncClient, team: str | None, state: str | None) -> list[int]:
+    async def _query_ids(self, client: httpx.AsyncClient, project: str, team: str | None, state: str | None) -> list[int]:
         clauses = [
-            f"[System.TeamProject] = '{self.s.azure_project}'",
+            f"[System.TeamProject] = '{project}'",
             f"[System.WorkItemType] IN ('{self.s.epic_type}', '{self.s.feature_type}')",
             "[System.State] <> 'Removed'",
         ]
@@ -61,14 +65,14 @@ class AzureDevOpsClient:
             clauses.append(f"[System.State] = '{state}'")
         wiql = "SELECT [System.Id] FROM workitems WHERE " + " AND ".join(clauses)
 
-        url = f"{self.s.base_url}/wit/wiql?api-version={self.s.azure_api_version}"
+        url = f"{self.s.project_base_url(project)}/wit/wiql?api-version={self.s.azure_api_version}"
         resp = await client.post(url, headers=self._headers, json={"query": wiql})
         resp.raise_for_status()
         return [wi["id"] for wi in resp.json().get("workItems", [])]
 
-    async def _batch(self, client: httpx.AsyncClient, ids: list[int]) -> list[dict[str, Any]]:
+    async def _batch(self, client: httpx.AsyncClient, project: str, ids: list[int]) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
-        url = f"{self.s.base_url}/wit/workitemsbatch?api-version={self.s.azure_api_version}"
+        url = f"{self.s.project_base_url(project)}/wit/workitemsbatch?api-version={self.s.azure_api_version}"
         for chunk in (ids[i : i + 200] for i in range(0, len(ids), 200)):
             resp = await client.post(
                 url, headers=self._headers, json={"ids": chunk, "fields": FIELDS}
@@ -77,10 +81,11 @@ class AzureDevOpsClient:
             out.extend(resp.json().get("value", []))
         return out
 
-    async def get_roadmap(self, team: str | None = None, state: str | None = None) -> RoadmapResponse:
+    async def get_roadmap(self, project: str | None = None, team: str | None = None, state: str | None = None) -> RoadmapResponse:
+        proj = project or self.s.azure_project
         async with httpx.AsyncClient(timeout=30.0) as client:
-            ids = await self._query_ids(client, team, state)
-            raw = await self._batch(client, ids) if ids else []
+            ids = await self._query_ids(client, proj, team, state)
+            raw = await self._batch(client, proj, ids) if ids else []
         return build_roadmap(raw)
 
 
@@ -92,20 +97,20 @@ def _parse_date(value: str | None) -> date | None:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
 
 
-def _quarter_key(d: date) -> str:
-    return f"{d.year}-Q{(d.month - 1) // 3 + 1}"
+def _month_key(d: date) -> str:
+    return f"{d.year}-{d.month:02d}"
 
 
-def _quarters_between(start: date, end: date) -> list[str]:
-    """Lista de chaves de trimestre cobertas por [start, end] inclusive."""
+def _months_between(start: date, end: date) -> list[str]:
+    """Lista de chaves de mês cobertas por [start, end] inclusive."""
     keys: list[str] = []
-    y, q = start.year, (start.month - 1) // 3 + 1
-    ey, eq = end.year, (end.month - 1) // 3 + 1
-    while (y, q) <= (ey, eq):
-        keys.append(f"{y}-Q{q}")
-        q += 1
-        if q > 4:
-            q, y = 1, y + 1
+    y, m = start.year, start.month
+    ey, em = end.year, end.month
+    while (y, m) <= (ey, em):
+        keys.append(f"{y}-{m:02d}")
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
     return keys
 
 
@@ -113,16 +118,24 @@ def _to_workitem(raw: dict[str, Any]) -> dict[str, Any]:
     f = raw.get("fields", {})
     assigned = f.get("System.AssignedTo")
     tags = f.get("System.Tags")
-    start = _parse_date(f.get("Microsoft.VSTS.Scheduling.StartDate"))
-    target = _parse_date(f.get("Microsoft.VSTS.Scheduling.TargetDate"))
+    # Usa datas do Gantt quando preenchidas; cai no StartDate/TargetDate padrão como fallback
+    start = (
+        _parse_date(f.get("Custom.24ed5080-e3b3-43a7-af51-2e7ec564b453"))
+        or _parse_date(f.get("Microsoft.VSTS.Scheduling.StartDate"))
+    )
+    target = (
+        _parse_date(f.get("Custom.27fa629f-5d4c-42b8-ab24-d8aa430e98a8"))
+        or _parse_date(f.get("Microsoft.VSTS.Scheduling.TargetDate"))
+    )
+    is_roadmap_item = str(f.get("Custom.44b378c0-6c3f-4478-8693-c16e44f9928b") or "").strip().lower() == "sim"
 
-    quarters: list[str] = []
+    months: list[str] = []
     if start and target and start <= target:
-        quarters = _quarters_between(start, target)
+        months = _months_between(start, target)
     elif target:
-        quarters = [_quarter_key(target)]
+        months = [_month_key(target)]
     elif start:
-        quarters = [_quarter_key(start)]
+        months = [_month_key(start)]
 
     return {
         "id": raw["id"],
@@ -138,7 +151,8 @@ def _to_workitem(raw: dict[str, Any]) -> dict[str, Any]:
         "target_date": target,
         "priority": f.get("Microsoft.VSTS.Common.Priority"),
         "url": raw.get("url"),
-        "quarters": quarters,
+        "months": months,
+        "is_roadmap_item": is_roadmap_item,
     }
 
 
@@ -150,7 +164,9 @@ def build_roadmap(raw_items: list[dict[str, Any]]) -> RoadmapResponse:
     features: list[Feature] = []
     for item in parsed:
         if item["type"] in epic_type:
-            epics[item["id"]] = Epic(**{k: v for k, v in item.items() if k != "parent_id"})
+            # Inclui apenas EPICs marcados como item de roadmap estratégico
+            if item.get("is_roadmap_item"):
+                epics[item["id"]] = Epic(**{k: v for k, v in item.items() if k != "parent_id"})
         else:
             features.append(Feature(**item))
 
@@ -167,39 +183,43 @@ def build_roadmap(raw_items: list[dict[str, Any]]) -> RoadmapResponse:
         if epic.features:
             done = sum(1 for f in epic.features if f.state in DONE_STATES)
             epic.progress = round(done / len(epic.features), 2)
-            if not epic.quarters:
-                qs = sorted({q for f in epic.features for q in f.quarters})
-                epic.quarters = qs
+            if not epic.months:
+                ms = sorted({m for f in epic.features for m in f.months})
+                epic.months = ms
 
-    # eixo de trimestres: do menor ao maior presente nos dados
+    # eixo de meses: do menor ao maior presente nos dados
     all_keys = sorted(
-        {q for e in epics.values() for q in e.quarters}
-        | {q for e in epics.values() for f in e.features for q in f.quarters}
-        | {q for f in orphans for q in f.quarters}
+        {m for e in epics.values() for m in e.months}
+        | {m for e in epics.values() for f in e.features for m in f.months}
+        | {m for f in orphans for m in f.months}
     )
-    quarters = _expand_axis(all_keys)
+    months = _expand_month_axis(all_keys)
 
     return RoadmapResponse(
-        epics=sorted(epics.values(), key=lambda e: (e.quarters[0] if e.quarters else "9999", e.title)),
-        quarters=quarters,
+        epics=sorted(epics.values(), key=lambda e: (e.months[0] if e.months else "9999", e.title)),
+        months=months,
         orphan_features=orphans,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
 
 
-def _expand_axis(keys: list[str]) -> list[Quarter]:
-    """Preenche os trimestres faltantes entre o primeiro e o último (eixo contínuo)."""
+_MONTH_LABELS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+                 "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
+
+def _expand_month_axis(keys: list[str]) -> list[Month]:
+    """Preenche os meses faltantes entre o primeiro e o último (eixo contínuo)."""
     if not keys:
         return []
     def parse(k: str) -> tuple[int, int]:
-        y, q = k.split("-Q")
-        return int(y), int(q)
-    (sy, sq), (ey, eq) = parse(keys[0]), parse(keys[-1])
-    out: list[Quarter] = []
-    y, q = sy, sq
-    while (y, q) <= (ey, eq):
-        out.append(Quarter(key=f"{y}-Q{q}", year=y, quarter=q, label=f"Q{q} {y}"))
-        q += 1
-        if q > 4:
-            q, y = 1, y + 1
+        y, m = k.split("-")
+        return int(y), int(m)
+    (sy, sm), (ey, em) = parse(keys[0]), parse(keys[-1])
+    out: list[Month] = []
+    y, m = sy, sm
+    while (y, m) <= (ey, em):
+        out.append(Month(key=f"{y}-{m:02d}", year=y, month=m, label=f"{_MONTH_LABELS[m-1]} {y}"))
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
     return out

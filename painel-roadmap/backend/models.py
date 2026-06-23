@@ -17,8 +17,9 @@ class WorkItem(BaseModel):
     target_date: date | None = None
     priority: int | None = None
     url: str | None = None
-    # Trimestres ocupados pela barra, ex: ["2025-Q1", "2025-Q2"]
-    quarters: list[str] = []
+    # Meses ocupados pela barra, ex: ["2025-07", "2025-08"]
+    months: list[str] = []
+    is_roadmap_item: bool = False
 
 
 class Feature(WorkItem):
@@ -31,15 +32,15 @@ class Epic(WorkItem):
     progress: float = 0.0
 
 
-class Quarter(BaseModel):
-    key: str        # "2025-Q1"
+class Month(BaseModel):
+    key: str        # "2025-07"
     year: int
-    quarter: int    # 1..4
-    label: str      # "Q1 2025"
+    month: int      # 1..12
+    label: str      # "Jul 2025"
 
 
 class RoadmapResponse(BaseModel):
     epics: list[Epic]
-    quarters: list[Quarter]          # eixo horizontal já calculado
+    months: list[Month]              # eixo horizontal já calculado
     orphan_features: list[Feature]   # features sem epic pai carregado
     generated_at: str
