@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import {
-  ChevronRight, ChevronDown, RefreshCw, X, ExternalLink, Calendar, Loader2, ArrowLeft, Map,
+  ChevronRight, ChevronDown, RefreshCw, X, ExternalLink, Calendar, Loader2, ArrowLeft, Map as MapIcon,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ *
@@ -170,7 +170,7 @@ function LandingPage({ onSelect }) {
         ) : (
           projects.map((proj) => (
             <div key={proj} className="rm-proj-card" onClick={() => onSelect(proj)}>
-              <div style={{ color: "#FF3D03", marginBottom: 12 }}><Map size={32} /></div>
+              <div style={{ color: "#FF3D03", marginBottom: 12 }}><MapIcon size={32} /></div>
               <div className="rm-proj-name">{proj}</div>
               <div className="rm-proj-sub">Azure DevOps · Epics → Features</div>
               <div className="rm-proj-arrow">Ver roadmap <ChevronRight size={15} /></div>
